@@ -47,7 +47,7 @@ await printer.printBitmap(printableBitmap);
 
 **Browser:** call `connectPrinter()` from a click. Chrome and Edge only; Safari has no Web Bluetooth.
 **macOS + Node:** run from a terminal that has Bluetooth permission (allow the prompt once). Launched from an app without it, Node is killed by macOS.
-**Linux + Node:** run `npm install dbus-next --ignore-scripts` so catprinter goes through BlueZ (no root needed). If the printer won't connect, set `ControllerMode = le` in `/etc/bluetooth/main.conf` and restart `bluetooth`; BlueZ otherwise tries Classic Bluetooth on dual-mode printers like the X6h.
+**Linux + Node:** experimental, not yet confirmed to print. On a Raspberry Pi 4 the onboard Bluetooth found and connected to the X6h, then dropped the link within a second. If you try it: `npm install dbus-next --ignore-scripts` makes catprinter go through BlueZ (no root needed), and BlueZ may need `ControllerMode = le` in `/etc/bluetooth/main.conf` to avoid connecting over Classic Bluetooth.
 
 ## CLI
 
