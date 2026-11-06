@@ -2,6 +2,15 @@
   "name": "catprinter",
   "version": "0.1.0",
   "description": "Print to cheap Bluetooth \"cat\" thermal printers (X6h / TinyPrint) from Node, the browser, or the command line.",
+  "author": "Jida Han",
+  "homepage": "https://jidagraphy.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jidagraphy/catprinter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jidagraphy/catprinter/issues"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -10,7 +19,7 @@
     }
   },
   "bin": {
-    "catprinter": "./bin/catprinter.js"
+    "catprinter": "bin/catprinter.js"
   },
   "files": [
     "src",
