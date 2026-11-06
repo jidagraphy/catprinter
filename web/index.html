@@ -1,0 +1,181 @@
+<!doctype html>
+<!--
+  catprinter web interface. Uses the library in ../src over Web Bluetooth (Chrome or Edge; Safari has none).
+  Run with `npx catprinter serve`, or host the repo on any https static host (e.g. GitHub Pages).
+  Opening this file directly (file://) won't work: browsers block module imports from local files.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>catprinter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --color-background: #141414; --color-text-primary: #f5f5f5; --color-border: #444; color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; min-height: 100vh; background-color: var(--color-background); color: var(--color-text-primary); }
+    :focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+    button { padding: 10px 18px; border-radius: 8px; border: 1px solid var(--color-border); background-color: #2a2a2a; color: var(--color-text-primary); font-size: 15px; cursor: pointer; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.is-active, #printButton { background-color: var(--color-text-primary); color: #111; }
+
+    .page-container { max-width: 480px; width: 100%; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+    .header-row { display: flex; justify-content: space-between; align-items: center; }
+    .page-title { font-size: 24px; letter-spacing: 0.08em; margin: 0; }
+    .status-line { margin: 0; font-size: 14px; opacity: 0.75; }
+    .controls-section { display: flex; flex-direction: column; gap: 12px; }
+    .source-toggle-row { display: flex; gap: 8px; }
+    .source-toggle-row button { flex: 1; }
+    .text-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--color-border); background-color: #1b1b1b; color: var(--color-text-primary); font: 15px ui-monospace, Menlo, monospace; }
+    .slider-label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+    .preview-section { display: flex; justify-content: center; align-items: center; min-height: 120px; padding: 16px; border-radius: 8px; border: 1px dashed var(--color-border); }
+    .placeholder-message { margin: 0; opacity: 0.6; font-size: 14px; text-align: center; }
+    #previewCanvas { width: 100%; max-width: 384px; image-rendering: pixelated; background-color: #fff; }
+    #printButton { padding: 14px; font-size: 17px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="page-container" id="pageContainer">
+    <!-- Connection Section -->
+    <header class="header-row">
+      <h1 class="page-title">catprinter</h1>
+      <button id="connectButton">Connect</button>
+    </header>
+    <p class="status-line" id="statusLine">Not connected</p>
+
+    <!-- Source Selection Section -->
+    <section class="controls-section">
+      <div class="source-toggle-row">
+        <button id="imageModeButton" class="is-active">Image</button>
+        <button id="textModeButton">Text</button>
+      </div>
+      <input type="file" accept="image/*" id="imageFileInput" />
+      <textarea class="text-input" id="textInput" rows="4" placeholder="Type something…" hidden></textarea>
+      <label class="slider-label"><span>Brightness <output id="brightnessValue">0</output></span>
+        <input type="range" id="brightnessSlider" min="-100" max="100" value="0" />
+      </label>
+      <label class="slider-label"><span>Heat <output id="heatValue">9500</output></span>
+        <input type="range" id="heatSlider" min="2000" max="20000" step="500" value="9500" />
+      </label>
+    </section>
+
+    <!-- Preview Section -->
+    <section class="preview-section">
+      <p class="placeholder-message" id="placeholderMessage">Drop an image anywhere, or pick one above.</p>
+      <canvas id="previewCanvas" hidden></canvas>
+    </section>
+
+    <button id="printButton" disabled>Print</button>
+  </main>
+
+  <script type="module">
+    import { connectPrinter, renderText, renderImage } from '../src/browserEntry.js';
+
+    const elements = Object.fromEntries([
+      'pageContainer', 'connectButton', 'statusLine', 'imageModeButton', 'textModeButton', 'imageFileInput', 'textInput',
+      'brightnessSlider', 'brightnessValue', 'heatSlider', 'heatValue', 'placeholderMessage', 'previewCanvas', 'printButton',
+    ].map((elementId) => [elementId, document.getElementById(elementId)]));
+
+    const appState = { printer: null, sourceImageFile: null, isPrintingImage: true, isPrinting: false, printableBitmap: null };
+
+    const updatePrintButton = () => {
+      elements.printButton.disabled = !appState.printer || !appState.printableBitmap || appState.isPrinting;
+      elements.printButton.textContent = appState.isPrinting ? 'Printing…' : 'Print';
+    };
+
+    // Image renders are async; when the slider fires several in a row, only the newest may win,
+    // otherwise a slow older render could land last and get printed.
+    let latestPreviewRequestNumber = 0;
+
+    const refreshDitheredPreview = async () => {
+      const previewRequestNumber = ++latestPreviewRequestNumber;
+      const textToPrint = elements.textInput.value;
+      const brightness = Number(elements.brightnessSlider.value);
+      const hasPrintSource = appState.isPrintingImage ? appState.sourceImageFile !== null : textToPrint.trim() !== '';
+      const printableBitmap = !hasPrintSource ? null
+        : appState.isPrintingImage ? await renderImage(appState.sourceImageFile, { brightness })
+        : renderText(textToPrint, { brightness });
+      if (previewRequestNumber !== latestPreviewRequestNumber) return;
+      appState.printableBitmap = printableBitmap;
+
+      if (appState.printableBitmap) {
+        const { previewCanvas } = appState.printableBitmap;
+        elements.previewCanvas.width = previewCanvas.width;
+        elements.previewCanvas.height = previewCanvas.height;
+        elements.previewCanvas.getContext('2d').drawImage(previewCanvas, 0, 0);
+      }
+      elements.previewCanvas.hidden = !hasPrintSource;
+      elements.placeholderMessage.hidden = hasPrintSource;
+      updatePrintButton();
+    };
+
+    const setPrintSourceMode = (isPrintingImage) => {
+      appState.isPrintingImage = isPrintingImage;
+      elements.imageModeButton.classList.toggle('is-active', isPrintingImage);
+      elements.textModeButton.classList.toggle('is-active', !isPrintingImage);
+      elements.imageFileInput.hidden = !isPrintingImage;
+      elements.textInput.hidden = isPrintingImage;
+      refreshDitheredPreview();
+    };
+
+    const loadImageFile = (imageFile) => {
+      if (!imageFile?.type.startsWith('image/')) return;
+      appState.sourceImageFile = imageFile;
+      setPrintSourceMode(true);
+    };
+
+    const handleConnectPrinter = async () => {
+      try {
+        elements.statusLine.textContent = 'Pick the printer in the browser popup…';
+        appState.printer = await connectPrinter();
+        appState.printer.bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+          appState.printer = null;
+          elements.connectButton.disabled = false;
+          elements.connectButton.textContent = 'Connect';
+          elements.statusLine.textContent = 'Disconnected';
+          updatePrintButton();
+        });
+        elements.connectButton.disabled = true;
+        elements.connectButton.textContent = 'Connected';
+        elements.statusLine.textContent = `Connected to ${appState.printer.printerName}`;
+      } catch (connectionError) {
+        elements.statusLine.textContent = `Connect failed: ${connectionError.message}`;
+      }
+      updatePrintButton();
+    };
+
+    const handlePrint = async () => {
+      appState.isPrinting = true;
+      updatePrintButton();
+      try {
+        const printResult = await appState.printer.printBitmap(appState.printableBitmap, {
+          heatEnergy: Number(elements.heatSlider.value),
+          onProgress: (progressRatio) => { elements.statusLine.textContent = `Printing… ${Math.round(progressRatio * 100)}%`; },
+        });
+        elements.statusLine.textContent = `Sent ${printResult.heightInPixels} lines`;
+      } catch (printError) {
+        elements.statusLine.textContent = `Print failed: ${printError.message}`;
+      }
+      appState.isPrinting = false;
+      updatePrintButton();
+    };
+
+    elements.connectButton.addEventListener('click', handleConnectPrinter);
+    elements.printButton.addEventListener('click', handlePrint);
+    elements.imageModeButton.addEventListener('click', () => setPrintSourceMode(true));
+    elements.textModeButton.addEventListener('click', () => setPrintSourceMode(false));
+    elements.imageFileInput.addEventListener('change', (fileEvent) => loadImageFile(fileEvent.target.files[0]));
+    elements.textInput.addEventListener('input', refreshDitheredPreview);
+    elements.brightnessSlider.addEventListener('input', () => {
+      elements.brightnessValue.textContent = elements.brightnessSlider.value;
+      refreshDitheredPreview();
+    });
+    elements.heatSlider.addEventListener('input', () => { elements.heatValue.textContent = elements.heatSlider.value; });
+    elements.pageContainer.addEventListener('dragover', (dragEvent) => dragEvent.preventDefault());
+    elements.pageContainer.addEventListener('drop', (dropEvent) => {
+      dropEvent.preventDefault();
+      loadImageFile(dropEvent.dataTransfer.files[0]);
+    });
+  </script>
+</body>
+</html>

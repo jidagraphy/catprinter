@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+# CLI previews made while developing (root only, so README images still get committed)
+/*.png

@@ -1,0 +1,42 @@
+{
+  "name": "catprinter",
+  "version": "0.1.0",
+  "description": "Print to cheap Bluetooth \"cat\" thermal printers (X6h / TinyPrint) from Node, the browser, or the command line.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./src/browserEntry.js",
+      "default": "./src/nodeEntry.js"
+    }
+  },
+  "bin": {
+    "catprinter": "./bin/catprinter.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "web"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "serve": "node bin/catprinter.js serve"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "cat printer",
+    "thermal printer",
+    "x6h",
+    "tinyprint",
+    "bluetooth",
+    "web bluetooth",
+    "receipt printer",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.1.0",
+    "@stoprocent/noble": "^2.8.0"
+  }
+}
